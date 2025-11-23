@@ -12,6 +12,7 @@ final class MacApp: AbstractApp {
     private let axApp: ThreadGuardedValue<AXUIElement>
     private let appAxSubscriptions: ThreadGuardedValue<[AxSubscription]> // keep subscriptions in memory
     private let windows: ThreadGuardedValue<[UInt32: AxWindow]> = .init([:])
+    public var lastNativeFocusedWindowId: UInt32? = nil
     private var thread: Thread?
     private var setFrameJobs: [UInt32: RunLoopJob] = [:]
     @MainActor private static var focusJob: RunLoopJob? = nil
@@ -109,11 +110,15 @@ final class MacApp: AbstractApp {
     @MainActor func nativeFocus(_ windowId: UInt32) {
         if serverArgs.isReadOnly { return }
         MacApp.focusJob?.cancel()
-        MacApp.focusJob = withWindowAsync(windowId) { [nsApp] window, job in
-            // Raise firstly to make sure that by the time we activate the app, the window would be already on top
-            window.set(Ax.isMainAttr, true)
-            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        if lastNativeFocusedWindowId == windowId {
             nsApp.activate(options: .activateIgnoringOtherApps)
+        } else {
+            MacApp.focusJob = withWindowAsync(windowId) { [nsApp] window, job in
+                // Raise firstly to make sure that by the time we activate the app, the window would be already on top
+                window.set(Ax.isMainAttr, true)
+                AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+                nsApp.activate(options: .activateIgnoringOtherApps)
+            }
         }
     }
 
@@ -174,22 +179,21 @@ final class MacApp: AbstractApp {
         }
     }
 
-    func isWindowHeuristic(_ windowId: UInt32) async throws -> Bool {
-        try await withWindow(windowId) { [nsApp, axApp, appId] window, job in
-            window.isWindowHeuristic(axApp: axApp.threadGuarded, appId, nsApp.activationPolicy)
+    func isWindowHeuristic(_ windowId: UInt32, _ windowLevel: MacOsWindowLevel?) async throws -> Bool {
+        return try await withWindow(windowId) { [nsApp, axApp, appId] window, job in
+            window.isWindowHeuristic(axApp: axApp.threadGuarded, appId, nsApp.activationPolicy, windowLevel)
         } == true
     }
 
-    @MainActor
-    func getAxUiElementWindowType(_ windowId: UInt32) async throws -> AxUiElementWindowType {
-        try await withWindow(windowId) { [nsApp, axApp, appId] window, job in
-            window.getWindowType(axApp: axApp.threadGuarded, appId, nsApp.activationPolicy)
+    func getAxUiElementWindowType(_ windowId: UInt32, _ windowLevel: MacOsWindowLevel?) async throws -> AxUiElementWindowType {
+        return try await withWindow(windowId) { [nsApp, axApp, appId] window, job in
+            window.getWindowType(axApp: axApp.threadGuarded, appId, nsApp.activationPolicy, windowLevel)
         } ?? .window
     }
 
-    func isDialogHeuristic(_ windowId: UInt32) async throws -> Bool {
+    func isDialogHeuristic(_ windowId: UInt32, _ windowLevel: MacOsWindowLevel?) async throws -> Bool {
         try await withWindow(windowId) { [appId] window, job in
-            window.isDialogHeuristic(appId)
+            window.isDialogHeuristic(appId, windowLevel)
         } == true
     }
 

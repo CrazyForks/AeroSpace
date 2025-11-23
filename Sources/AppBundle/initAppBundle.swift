@@ -22,7 +22,7 @@ import Foundation
         Workspace.garbageCollectUnusedWorkspaces() // init workspaces
         _ = Workspace.all.first?.focusWorkspace()
         try await runRefreshSessionBlocking(.startup, layoutWorkspaces: false)
-        try await runSession(.startup, .checkServerIsEnabledOrDie) {
+        try await runLightSession(.startup, .checkServerIsEnabledOrDie) {
             smartLayoutAtStartup()
             _ = try await config.afterStartupCommand.runCmdSeq(.defaultEnv, .emptyStdin)
         }
@@ -61,7 +61,7 @@ private let serverHelp = """
                               Useful if you want to use only debug-windows or other query commands.
     """
 
-private nonisolated(unsafe) var _serverArgs = ServerArgs()
+nonisolated(unsafe) private var _serverArgs = ServerArgs()
 var serverArgs: ServerArgs { _serverArgs }
 private func initServerArgs() {
     let args = CommandLine.arguments.slice(1...) ?? []
